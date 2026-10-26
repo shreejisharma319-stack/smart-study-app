@@ -6,14 +6,36 @@ import time
 # 1. Page Configuration
 st.set_page_config(page_title="Smart Study Assistant", layout="wide", page_icon="🎓")
 
-# Custom Styling
-st.markdown("""
+# --- THEME SELECTION ---
+# Check if theme is selected in session state, otherwise default to Dark / Blue
+if 'selected_theme' not in st.session_state:
+    st.session_state.selected_theme = "Dark / Blue"
+
+# Dynamic Theme Colors
+if st.session_state.selected_theme == "Light":
+    bg_color = "#FFFFFF"
+    text_color = "#222222"
+    card_bg = "linear-gradient(135deg, #E3F2FD, #F5F5F5)"
+    btn_bg = "#2196F3"
+elif st.session_state.selected_theme == "Vibrant & Colorful":
+    bg_color = "#FFF0F5"
+    text_color = "#2B0B3A"
+    card_bg = "linear-gradient(135deg, #FF6B6B, #FF8E53, #FFD93D)"
+    btn_bg = "#FF4B4B"
+else:  # Dark / Blue
+    bg_color = "#f8f9fa"
+    text_color = "#333333"
+    card_bg = "linear-gradient(135deg, #6C63FF, #3F3D56)"
+    btn_bg = "#6C63FF"
+
+# Custom Styling Injection
+st.markdown(f"""
     <style>
-    .main { background-color: #f8f9fa; }
-    .stButton>button { width: 100%; border-radius: 12px; height: 3.5em; background-color: #6C63FF; color: white; border: none; font-weight: bold; }
-    .welcome-card { background: linear-gradient(135deg, #6C63FF, #3F3D56); color: white; padding: 30px; border-radius: 20px; text-align: center; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-    .user-msg { background-color: #E3F2FD; padding: 15px; border-radius: 15px; margin-bottom: 10px; border-left: 5px solid #2196F3; color: #1565C0; }
-    .bot-msg { background-color: #FFFFFF; padding: 15px; border-radius: 10px; border: 1px solid #E0E0E0; margin-bottom: 20px; border-left: 5px solid #6C63FF; color: #333; }
+    .main {{ background-color: {bg_color}; color: {text_color}; }}
+    .stButton>button {{ width: 100%; border-radius: 12px; height: 3.5em; background-color: {btn_bg}; color: white; border: none; font-weight: bold; }}
+    .welcome-card {{ background: {card_bg}; color: white; padding: 30px; border-radius: 20px; text-align: center; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }}
+    .user-msg {{ background-color: #E3F2FD; padding: 15px; border-radius: 15px; margin-bottom: 10px; border-left: 5px solid #2196F3; color: #1565C0; }}
+    .bot-msg {{ background-color: #FFFFFF; padding: 15px; border-radius: 10px; border: 1px solid #E0E0E0; margin-bottom: 20px; border-left: 5px solid {btn_bg}; color: #333; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -206,7 +228,42 @@ Add instructions at top and 'End of Paper' at bottom."""
         uploaded_image = st.file_uploader("📷 Upload an image of a problem, diagram, or textbook question (optional)", type=["png", "jpg", "jpeg"])
         
         if uploaded_image:
-            st.image(uploaded_image, caption="Uploaded Problem Image", use_container_width=True)
+            st.image(upload_image, caption="Upload Problem Image", use_container_width=True)
+            uploaded_image.seek(0)
+
+        p = st.chat_input("Ask a question or explain the uploaded image...")
+
+        for chat in st.session_state.chat_history:
+            st.markdown(f'<div class="user-msg"><b>🙋 You:</b> {chat["question"]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="bot-msg"><b>🤖 Tutor:</b><br>{chat["answer"]}</div>', unsafe_allow_html=True)
+            
+        if p or uploaded_image:
+            display_text = p if p else "[Uploaded Image with no text]"
+            st.markdown(f'<div class="user-msg"><b>🙋 You:</b> {display_text}</div>', unsafe_allow_html=True)
+            
+            if uploaded_image:
+                base64_img = encode_image(uploaded_image)
+                user_content = [
+                    {"type": "text", "text": p if p else "Please solve or explain this image for me in detail."},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{base64_img}"}
+                    }
+                ]
+            else:
+                user_content = p
+
+            with st.spinner("AI Tutor is analyzing..."):
+                stream = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": user_content}],
+                    stream=True
+                )
+                ai_response = st.write_stream(stream)
+                
+            st.session_state.chat_history.append({"question": display_text, "answer": ai_response})
+            st.rerun()
+            
         p = st.chat_input("Ask a question...")
         for chat in st.session_state.chat_history:
             st.markdown(f'<div class="user-msg"><b>🙋 You:</b> {chat["question"]}</div>', unsafe_allow_html=True)
